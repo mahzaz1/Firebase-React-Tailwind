@@ -17,12 +17,11 @@ import db from "../firebase";
 function Blogs() {
   const [blogs, setBlogs] = useState([]);
   const [loading, setLoading] = useState(false);
-  console.log("Loading", loading);
 
   const date = new Date();
-  // date.setDate(date.getDate() - 3);
+  date.setDate(date.getDate() - 3);
 
-  console.log("Dateeeee",date.getDate())
+  console.log("Dateeeee", date.getDate());
 
   useEffect(() => {
     setLoading(true);
@@ -151,9 +150,6 @@ function Blogs() {
           </div>
 
           <div className=" grid grid-cols-1 lg:grid-cols-3 md:grid-cols-2 gap-3">
-            {/* Base */}
-
-            {/* Pill */}
             {blogs.map((data) => (
               <article
                 key={data.id}
