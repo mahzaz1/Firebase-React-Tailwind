@@ -30,7 +30,7 @@ const Dot = ({ color }) => {
 
 function Colors() {
   const [colors, setColors] = useState([]);
-  console.log("colors", colors);
+  // console.log("colors", colors);
 
   useEffect(() => {
     const colorCollection = collection(db, "colors");

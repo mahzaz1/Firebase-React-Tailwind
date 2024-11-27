@@ -11,17 +11,44 @@ import {
   Timestamp,
   where,
 } from "firebase/firestore";
-import React, { useEffect, useState } from "react";
-import db from "../firebase";
+import React, { useEffect, useRef, useState } from "react";
+import db, { auth } from "../firebase";
+import { useNavigate } from "react-router-dom";
+import { onAuthStateChanged } from "firebase/auth";
+import { useGSAP } from "@gsap/react";
+import gsap from "gsap";
 
 function Blogs() {
+  const navigate = useNavigate();
+  const blogRef = useRef();
   const [blogs, setBlogs] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState(""); // State to store search query
+  const [filteredBlogs, setFilteredBlogs] = useState([]);
+  const [user, setUser] = useState(null);
+  // console.log("user",user.uid)
 
-  const date = new Date();
-  date.setDate(date.getDate() - 3);
+  // console.log("filteredBlogs",filteredBlogs)
 
-  console.log("Dateeeee", date.getDate());
+  useGSAP(() => {
+    gsap.from(".blog-card", {
+      scale: 0,
+      opacity: 0,
+      duration: 1,
+    });
+  },[filteredBlogs]);
+
+  useEffect(() => {
+    if (searchQuery) {
+      // Filter blogs based on search query
+      const result = blogs.filter((blog) =>
+        blog.title.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+      setFilteredBlogs(result);
+    } else {
+      setFilteredBlogs(blogs);
+    }
+  }, [searchQuery, blogs]);
 
   useEffect(() => {
     setLoading(true);
@@ -45,7 +72,7 @@ function Blogs() {
           ...doc.data(),
           id: doc.id,
         }));
-        console.log("blogsList", blogsList);
+        // console.log("blogsList", blogsList);
         setBlogs(blogsList);
         setLoading(false);
       });
@@ -60,8 +87,9 @@ function Blogs() {
       const title = prompt("Blog Title Here");
       const image = prompt("Paste Image URL Here");
       const desc = prompt("Blog Description Here");
+      const category = prompt("Blog Category Here");
 
-      if (!title || !image || !desc) {
+      if (!title || !image || !desc || !category) {
         return;
       }
 
@@ -69,6 +97,8 @@ function Blogs() {
         title: title,
         image: image,
         description: desc,
+        category: category,
+        user_id: user.uid,
         date: Timestamp.now(),
       };
 
@@ -80,7 +110,11 @@ function Blogs() {
     }
   };
 
-  const handleEdit = async (id) => {
+  const handleEdit = async (id, blog_userID) => {
+    if (user.uid != blog_userID) {
+      alert("Sorry! Only Admin can edit");
+      return;
+    }
     try {
       const docRef = doc(db, "blogs", id);
       const docsnap = await getDoc(docRef);
@@ -88,6 +122,7 @@ function Blogs() {
       const title = prompt("", docsnap.data().title);
       const image = prompt("", docsnap.data().image);
       const desc = prompt("", docsnap.data().description);
+      const category = prompt("", docsnap.data().category);
 
       if (!title || !image || !desc) {
         return;
@@ -96,13 +131,22 @@ function Blogs() {
         title: title,
         image: image,
         description: desc,
+        category: category,
+        user_id: user.uid,
+
         date: Timestamp.now(),
       };
       setDoc(docRef, payload);
     } catch (error) {}
   };
 
-  const handleDelete = async (id) => {
+  const handleDelete = async (id, blog_userID) => {
+    if (user.uid != blog_userID) {
+      alert("Sorry! Only Admin can delete");
+      return;
+    }
+
+    // console.log("blog_userID",blog_userID)
     try {
       const docRef = doc(db, "blogs", id);
       await deleteDoc(docRef);
@@ -111,6 +155,29 @@ function Blogs() {
     }
   };
 
+  async function Logout() {
+    await auth.signOut();
+    navigate("/login");
+  }
+
+  const handleSearchClick = (blog) => {
+    // When a user clicks a search result, navigate to the specific blog
+    navigate(`/blog/${blog.id}`);
+  };
+
+  const handleSearchChange = (e) => {
+    setSearchQuery(e.target.value);
+  };
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+    });
+
+    // Cleanup the listener on unmount
+    return () => unsubscribe();
+  }, []);
+
   return (
     <>
       {loading ? (
@@ -118,7 +185,7 @@ function Blogs() {
           <div role="status">
             <svg
               aria-hidden="true"
-              class="w-8 h-8 text-gray-200 animate-spin dark:text-gray-600 fill-blue-600"
+              className="w-8 h-8 text-gray-200 animate-spin dark:text-gray-600 fill-blue-600"
               viewBox="0 0 100 101"
               fill="none"
               xmlns="http://www.w3.org/2000/svg"
@@ -132,28 +199,92 @@ function Blogs() {
                 fill="currentFill"
               />
             </svg>
-            <span class="sr-only">Loading...</span>
+            <span className="sr-only">Loading...</span>
           </div>
         </div>
       ) : (
-        <div className="container mx-auto px-16 ">
-          <div className="flex justify-end">
-            <a
-              onClick={() => handleAddNew()}
-              className=" mb-5 group inline-block rounded bg-gradient-to-r from-pink-500 via-red-500 to-yellow-500 p-[2px] hover:text-white focus:outline-none focus:ring active:text-opacity-75"
-              href="#"
-            >
-              <span className="block rounded-sm bg-white px-4 py-2  lg:px-8 lg:py-3 text-sm font-medium group-hover:bg-transparent">
-                Add Blog
+        <div className="container mx-auto p-16 ">
+          <div className="flex justify-between">
+            <h1 className="text-3xl font-bold ">All Blogs</h1>
+
+            <div className="relative w-96">
+              <label htmlFor="Search" className="sr-only">
+                Search
+              </label>
+
+              <input
+                type="text"
+                id="Search"
+                placeholder="Search for..."
+                className="w-full rounded-md border-gray-900 p-2.5 pe-10 shadow-lg sm:text-sm"
+                value={searchQuery}
+                onChange={handleSearchChange}
+              />
+              {searchQuery && filteredBlogs.length > 0 && (
+                <div className="absolute w-full bg-white shadow-md z-10 rounded-md">
+                  {filteredBlogs.map((blog) => (
+                    <div
+                      key={blog.id}
+                      className="p-2 py-3 text-sm  cursor-pointer hover:bg-gray-200"
+                      // onClick={() => handleSearchClick(blog)}
+                    >
+                      {blog.title}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <span className="absolute inset-y-0 end-0 h-12 grid w-10 place-content-center">
+                <button
+                  type="button"
+                  className="text-gray-600  hover:text-gray-700"
+                >
+                  <span className="sr-only">Search</span>
+
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth="1.5"
+                    stroke="currentColor"
+                    className="size-4"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
+                    />
+                  </svg>
+                </button>
               </span>
-            </a>
+            </div>
+
+            <div>
+              <a
+                onClick={() => handleAddNew()}
+                className="me-2 mb-5 group inline-block rounded bg-gradient-to-r from-pink-500 via-red-500 to-yellow-500 p-[2px] hover:text-white focus:outline-none focus:ring active:text-opacity-75"
+                href="#"
+              >
+                <span className="block rounded-sm bg-white px-4 py-2  lg:px-8 lg:py-3 text-sm font-medium group-hover:bg-transparent">
+                  Add Blog
+                </span>
+              </a>
+              <a
+                onClick={() => Logout()}
+                className=" mb-5 group inline-block rounded bg-gradient-to-r from-pink-500 via-red-500 to-yellow-500 p-[2px] hover:text-white focus:outline-none focus:ring active:text-opacity-75"
+                href="#"
+              >
+                <span className="block rounded-sm bg-white px-4 py-2  lg:px-8 lg:py-3 text-sm font-medium group-hover:bg-transparent">
+                  Logout
+                </span>
+              </a>
+            </div>
           </div>
 
           <div className=" grid grid-cols-1 lg:grid-cols-3 md:grid-cols-2 gap-3">
-            {blogs.map((data) => (
+            {filteredBlogs.map((data) => (
               <article
                 key={data.id}
-                className="overflow-hidden rounded-lg shadow transition hover:shadow-lg"
+                className="blog-card overflow-hidden rounded-lg shadow transition hover:shadow-lg"
               >
                 <div className="relative">
                   <img
@@ -165,13 +296,13 @@ function Blogs() {
                   {/* Buttons positioned at the top-right */}
                   <span className="absolute top-2 right-2 flex space-x-2">
                     <button
-                      onClick={() => handleEdit(data.id)}
+                      onClick={() => handleEdit(data.id, data.user_id)}
                       className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border rounded shadow-sm hover:bg-gray-50"
                     >
                       Edit
                     </button>
                     <button
-                      onClick={() => handleDelete(data.id)}
+                      onClick={() => handleDelete(data.id, data.user_id)}
                       className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border rounded shadow-sm hover:bg-gray-50"
                     >
                       Delete
